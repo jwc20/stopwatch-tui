@@ -5,15 +5,22 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/jwc20/stopwatch-tui/stopwatch"
 )
 
 const stateFileName = ".stopwatch-state.json"
 
+type SplitState struct {
+	ElapsedNs  int64     `json:"elapsed_ns"`
+	RecordedAt time.Time `json:"recorded_at"`
+}
+
 type AppState struct {
-	Running   bool      `json:"running"`
-	ElapsedNs int64     `json:"elapsed_ns"`
-	StartedAt time.Time `json:"started_at,omitempty"`
-	Splits    []int64   `json:"splits,omitempty"`
+	Running   bool         `json:"running"`
+	ElapsedNs int64        `json:"elapsed_ns"`
+	StartedAt time.Time    `json:"started_at,omitempty"`
+	Splits    []SplitState `json:"splits,omitempty"`
 }
 
 func stateFilePath() (string, error) {
@@ -55,7 +62,7 @@ func SaveState(state AppState) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	return os.WriteFile(path, data, 0644)
 }
 
 func DeleteState() error {
@@ -78,10 +85,13 @@ func (s *AppState) ElapsedDuration() time.Duration {
 	return elapsed
 }
 
-func (s *AppState) SplitDurations() []time.Duration {
-	splits := make([]time.Duration, len(s.Splits))
-	for i, ns := range s.Splits {
-		splits[i] = time.Duration(ns)
+func (s *AppState) SplitEntries() []stopwatch.SplitEntry {
+	entries := make([]stopwatch.SplitEntry, len(s.Splits))
+	for i, sp := range s.Splits {
+		entries[i] = stopwatch.SplitEntry{
+			Elapsed:    time.Duration(sp.ElapsedNs),
+			RecordedAt: sp.RecordedAt,
+		}
 	}
-	return splits
+	return entries
 }

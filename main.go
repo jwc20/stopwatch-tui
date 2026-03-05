@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/lipgloss"
 	stopwatch "github.com/jwc20/stopwatch-tui/stopwatch"
 )
 
@@ -18,6 +20,8 @@ type model struct {
 	keymap    keymap
 	help      help.Model
 	quitting  bool
+	width     int
+	height    int
 }
 
 type keymap struct {
@@ -33,19 +37,52 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) View() tea.View {
-	s := "Elapsed: " + m.stopwatch.View() + "\n\n"
+	content := "Elapsed: " + m.stopwatch.View() + "\n\n"
 
 	if splits := m.stopwatch.SplitsView(); splits != "" {
-		s += splits + "\n"
+		content += splits + "\n"
 	}
 
 	if !m.quitting {
-		s += m.helpView()
+		content += m.helpView()
 	}
 
-	v := tea.NewView(s)
+	v := tea.NewView(m.center(content))
 	v.AltScreen = true
 	return v
+}
+
+func (m model) center(content string) string {
+	if m.width == 0 || m.height == 0 {
+		return content
+	}
+
+	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
+
+	maxWidth := 0
+	for _, line := range lines {
+		if w := lipgloss.Width(line); w > maxWidth {
+			maxWidth = w
+		}
+	}
+
+	leftPad := (m.width - maxWidth) / 2
+	if leftPad < 0 {
+		leftPad = 0
+	}
+	prefix := strings.Repeat(" ", leftPad)
+
+	topPad := (m.height - len(lines)) / 2
+	if topPad < 0 {
+		topPad = 0
+	}
+
+	var sb strings.Builder
+	sb.WriteString(strings.Repeat("\n", topPad))
+	for _, line := range lines {
+		sb.WriteString(prefix + line + "\n")
+	}
+	return sb.String()
 }
 
 func (m model) helpView() string {
@@ -59,20 +96,22 @@ func (m model) helpView() string {
 }
 
 func (m model) currentAppState() AppState {
-	splits := m.stopwatch.Splits()
-	splitNs := make([]int64, len(splits))
-	for i, s := range splits {
-		splitNs[i] = s.Nanoseconds()
+	entries := m.stopwatch.Splits()
+	splitStates := make([]SplitState, len(entries))
+	for i, e := range entries {
+		splitStates[i] = SplitState{
+			ElapsedNs:  e.Elapsed.Nanoseconds(),
+			RecordedAt: e.RecordedAt,
+		}
 	}
 
 	state := AppState{
 		Running:   m.stopwatch.Running(),
 		ElapsedNs: m.stopwatch.Elapsed().Nanoseconds(),
-		Splits:    splitNs,
+		Splits:    splitStates,
 	}
 	if state.Running {
 		state.StartedAt = time.Now()
-		state.ElapsedNs = m.stopwatch.Elapsed().Nanoseconds()
 	}
 	return state
 }
@@ -103,6 +142,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			swCmd := m.stopwatch.Toggle()
 			return m, tea.Batch(swCmd, saveCmd(m.currentAppState()))
 		}
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
 	case stopwatch.TickMsg:
 		var cmd tea.Cmd
 		m.stopwatch, cmd = m.stopwatch.Update(msg)
@@ -110,6 +153,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case stopwatch.StartStopMsg:
 		var cmd tea.Cmd
 		m.stopwatch, cmd = m.stopwatch.Update(msg)
+		m.keymap.reset.SetEnabled(!m.stopwatch.Running())
 		return m, tea.Batch(cmd, saveCmd(m.currentAppState()))
 	case stopwatch.SplitMsg:
 		var cmd tea.Cmd
@@ -118,6 +162,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case stopwatch.ResetMsg:
 		var cmd tea.Cmd
 		m.stopwatch, cmd = m.stopwatch.Update(msg)
+		m.keymap.reset.SetEnabled(true)
 		return m, cmd
 	}
 
@@ -138,7 +183,7 @@ func main() {
 	if state != nil {
 		opts = append(opts,
 			stopwatch.WithElapsed(state.ElapsedDuration()),
-			stopwatch.WithSplits(state.SplitDurations()),
+			stopwatch.WithSplits(state.SplitEntries()),
 			stopwatch.WithRunning(state.Running),
 		)
 	}
@@ -172,8 +217,10 @@ func main() {
 
 	if state == nil || !state.Running {
 		m.keymap.start.SetEnabled(false)
+		m.keymap.reset.SetEnabled(true)
 	} else {
 		m.keymap.stop.SetEnabled(false)
+		m.keymap.reset.SetEnabled(false)
 	}
 
 	sigs := make(chan os.Signal, 1)

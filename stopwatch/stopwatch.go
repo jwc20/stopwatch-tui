@@ -29,7 +29,7 @@ func WithElapsed(d time.Duration) Option {
 	}
 }
 
-func WithSplits(splits []time.Duration) Option {
+func WithSplits(splits []SplitEntry) Option {
 	return func(m *Model) {
 		m.splits = splits
 	}
@@ -56,7 +56,13 @@ type ResetMsg struct {
 }
 
 type SplitMsg struct {
-	ID int
+	ID         int
+	RecordedAt time.Time
+}
+
+type SplitEntry struct {
+	Elapsed    time.Duration
+	RecordedAt time.Time
 }
 
 type Model struct {
@@ -64,7 +70,7 @@ type Model struct {
 	id      int
 	tag     int
 	running bool
-	splits  []time.Duration
+	splits  []SplitEntry
 
 	Interval time.Duration
 }
@@ -104,7 +110,7 @@ func (m Model) Stop() tea.Cmd {
 
 func (m Model) Split() tea.Cmd {
 	return func() tea.Msg {
-		return SplitMsg{ID: m.id}
+		return SplitMsg{ID: m.id, RecordedAt: time.Now()}
 	}
 }
 
@@ -142,7 +148,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if msg.ID != m.id {
 			return m, nil
 		}
-		m.splits = append(m.splits, m.d)
+		m.splits = append(m.splits, SplitEntry{
+			Elapsed:    m.d,
+			RecordedAt: msg.RecordedAt,
+		})
 	case TickMsg:
 		if !m.running || msg.ID != m.id {
 			break
@@ -161,7 +170,7 @@ func (m Model) Elapsed() time.Duration {
 	return m.d
 }
 
-func (m Model) Splits() []time.Duration {
+func (m Model) Splits() []SplitEntry {
 	return m.splits
 }
 
@@ -177,11 +186,17 @@ func (m Model) SplitsView() string {
 	for i, s := range m.splits {
 		var lap time.Duration
 		if i == 0 {
-			lap = s
+			lap = s.Elapsed
 		} else {
-			lap = s - m.splits[i-1]
+			lap = s.Elapsed - m.splits[i-1].Elapsed
 		}
-		sb.WriteString(fmt.Sprintf("%2d.  %s  (+%s)\n", i+1, formatDuration(s), formatDuration(lap)))
+		sb.WriteString(fmt.Sprintf(
+			"%2d.  %s  (+%s)  %s\n",
+			i+1,
+			formatDuration(s.Elapsed),
+			formatDuration(lap),
+			s.RecordedAt.Format("2006-01-02 15:04:05"),
+		))
 	}
 	return sb.String()
 }
