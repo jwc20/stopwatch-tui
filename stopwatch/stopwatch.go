@@ -1,5 +1,5 @@
 // Package stopwatch provides a simple stopwatch component.
-package main
+package stopwatch
 
 import (
 	"sync/atomic"

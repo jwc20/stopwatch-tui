@@ -63,7 +63,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keymap.reset):
 			return m, m.stopwatch.Reset()
 		case key.Matches(msg, m.keymap.split):
-			return m, m.stopwatch.Split()
+			// return m, m.stopwatch.Split()
+			return m, nil
 		case key.Matches(msg, m.keymap.start, m.keymap.stop):
 			m.keymap.stop.SetEnabled(!m.stopwatch.Running())
 			m.keymap.start.SetEnabled(m.stopwatch.Running())
