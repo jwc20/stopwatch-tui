@@ -96,9 +96,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			DeleteState()
 			return m, cmd
 		case key.Matches(msg, m.keymap.split):
-			var swCmd tea.Cmd
-			m.stopwatch, swCmd = m.stopwatch.Update(stopwatch.SplitMsg{})
-			return m, tea.Batch(swCmd, saveCmd(m.currentAppState()))
+			return m, m.stopwatch.Split()
 		case key.Matches(msg, m.keymap.start, m.keymap.stop):
 			m.keymap.stop.SetEnabled(!m.stopwatch.Running())
 			m.keymap.start.SetEnabled(m.stopwatch.Running())
@@ -110,6 +108,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.stopwatch, cmd = m.stopwatch.Update(msg)
 		return m, tea.Batch(cmd, saveCmd(m.currentAppState()))
 	case stopwatch.StartStopMsg:
+		var cmd tea.Cmd
+		m.stopwatch, cmd = m.stopwatch.Update(msg)
+		return m, tea.Batch(cmd, saveCmd(m.currentAppState()))
+	case stopwatch.SplitMsg:
 		var cmd tea.Cmd
 		m.stopwatch, cmd = m.stopwatch.Update(msg)
 		return m, tea.Batch(cmd, saveCmd(m.currentAppState()))
