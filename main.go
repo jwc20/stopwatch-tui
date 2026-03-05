@@ -7,8 +7,8 @@ import (
 
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
-	"charm.land/bubbles/v2/stopwatch"
 	tea "charm.land/bubbletea/v2"
+	stopwatch "github.com/jwc20/stopwatch-tui/stopwatch"
 )
 
 type model struct {
@@ -20,6 +20,7 @@ type model struct {
 
 type keymap struct {
 	start key.Binding
+	split key.Binding
 	stop  key.Binding
 	reset key.Binding
 	quit  key.Binding
@@ -38,7 +39,9 @@ func (m model) View() tea.View {
 		s = "Elapsed: " + s
 		s += m.helpView()
 	}
-	return tea.NewView(s)
+	v := tea.NewView(s)
+	v.AltScreen = true
+	return v
 }
 
 func (m model) helpView() string {
@@ -59,6 +62,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case key.Matches(msg, m.keymap.reset):
 			return m, m.stopwatch.Reset()
+		case key.Matches(msg, m.keymap.split):
+			return m, m.stopwatch.Split()
 		case key.Matches(msg, m.keymap.start, m.keymap.stop):
 			m.keymap.stop.SetEnabled(!m.stopwatch.Running())
 			m.keymap.start.SetEnabled(m.stopwatch.Running())
@@ -81,6 +86,10 @@ func main() {
 			stop: key.NewBinding(
 				key.WithKeys("s"),
 				key.WithHelp("s", "stop"),
+			),
+			split: key.NewBinding(
+				key.WithKeys("p"),
+				key.WithHelp("p", "split"),
 			),
 			reset: key.NewBinding(
 				key.WithKeys("r"),
