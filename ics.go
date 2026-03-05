@@ -9,7 +9,7 @@ import (
 	"github.com/jwc20/stopwatch-tui/stopwatch"
 )
 
-func exportICS(splits []stopwatch.SplitEntry) (string, error) {
+func exportICS(splits []stopwatch.SplitEntry, names []string) (string, error) {
 	if len(splits) == 0 {
 		return "", fmt.Errorf("no splits to export")
 	}
@@ -28,12 +28,17 @@ func exportICS(splits []stopwatch.SplitEntry) (string, error) {
 		}
 		end := split.RecordedAt
 
+		name := fmt.Sprintf("Split %d", i+1)
+		if i < len(names) && names[i] != "" {
+			name = names[i]
+		}
+
 		event := cal.AddEvent(fmt.Sprintf("split-%d-%d@stopwatch-tui", i+1, split.RecordedAt.UnixNano()))
 		event.SetCreatedTime(time.Now())
 		event.SetDtStampTime(time.Now())
 		event.SetStartAt(start)
 		event.SetEndAt(end)
-		event.SetSummary(fmt.Sprintf("Split %d", i+1))
+		event.SetSummary(name)
 	}
 
 	filename := fmt.Sprintf("splits_%s.ics", time.Now().Format("2006-01-02_15-04-05"))

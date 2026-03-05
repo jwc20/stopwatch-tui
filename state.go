@@ -14,6 +14,7 @@ const stateFileName = ".stopwatch-state.json"
 type SplitState struct {
 	ElapsedNs  int64     `json:"elapsed_ns"`
 	RecordedAt time.Time `json:"recorded_at"`
+	Name       string    `json:"name,omitempty"`
 }
 
 type AppState struct {

@@ -60,6 +60,11 @@ type SplitMsg struct {
 	RecordedAt time.Time
 }
 
+type DeleteSplitMsg struct {
+	ID    int
+	Index int
+}
+
 type SplitEntry struct {
 	Elapsed    time.Duration
 	RecordedAt time.Time
@@ -114,6 +119,12 @@ func (m Model) Split() tea.Cmd {
 	}
 }
 
+func (m Model) DeleteSplit(index int) tea.Cmd {
+	return func() tea.Msg {
+		return DeleteSplitMsg{ID: m.id, Index: index}
+	}
+}
+
 func (m Model) Toggle() tea.Cmd {
 	if m.Running() {
 		return m.Stop()
@@ -152,6 +163,19 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			Elapsed:    m.d,
 			RecordedAt: msg.RecordedAt,
 		})
+	case DeleteSplitMsg:
+		if msg.ID != m.id {
+			return m, nil
+		}
+		i := msg.Index
+		if i < 0 || i >= len(m.splits) {
+			return m, nil
+		}
+		if i > 0 {
+			m.splits[i-1].Elapsed = m.splits[i].Elapsed
+			m.splits[i-1].RecordedAt = m.splits[i].RecordedAt
+		}
+		m.splits = append(m.splits[:i], m.splits[i+1:]...)
 	case TickMsg:
 		if !m.running || msg.ID != m.id {
 			break
