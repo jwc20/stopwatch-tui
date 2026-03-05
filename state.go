@@ -18,10 +18,11 @@ type SplitState struct {
 }
 
 type AppState struct {
-	Running   bool         `json:"running"`
-	ElapsedNs int64        `json:"elapsed_ns"`
-	StartedAt time.Time    `json:"started_at,omitempty"`
-	Splits    []SplitState `json:"splits,omitempty"`
+	Running    bool         `json:"running"`
+	ElapsedNs  int64        `json:"elapsed_ns"`
+	StartedAt  time.Time    `json:"started_at,omitempty"`
+	Splits     []SplitState `json:"splits,omitempty"`
+	Fullscreen bool         `json:"fullscreen"`
 }
 
 func stateFilePath() (string, error) {

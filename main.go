@@ -166,19 +166,27 @@ func (m model) center(content string) string {
 }
 
 func (m model) helpView() string {
-	bindings := []key.Binding{
-		m.keymap.start,
-		m.keymap.stop,
-		m.keymap.split,
-		m.keymap.reset,
-		m.keymap.export,
-		m.keymap.exportJSON,
-		m.keymap.fullscreen,
-	}
+	var bindings []key.Binding
 	if m.inputFocused() {
-		bindings = append(bindings, m.keymap.navUp, m.keymap.navDown, m.keymap.deleteSplit, m.keymap.unfocus)
+		bindings = []key.Binding{
+			m.keymap.navUp,
+			// m.keymap.navDown,
+			m.keymap.deleteSplit,
+			m.keymap.unfocus,
+			m.keymap.quit,
+		}
+	} else {
+		bindings = []key.Binding{
+			m.keymap.start,
+			m.keymap.stop,
+			m.keymap.split,
+			m.keymap.reset,
+			m.keymap.export,
+			m.keymap.exportJSON,
+			m.keymap.fullscreen,
+			m.keymap.quit,
+		}
 	}
-	bindings = append(bindings, m.keymap.quit)
 	return "\n" + m.help.ShortHelpView(bindings)
 }
 
@@ -198,9 +206,10 @@ func (m model) currentAppState() AppState {
 	}
 
 	state := AppState{
-		Running:   m.stopwatch.Running(),
-		ElapsedNs: m.stopwatch.Elapsed().Nanoseconds(),
-		Splits:    splitStates,
+		Running:    m.stopwatch.Running(),
+		ElapsedNs:  m.stopwatch.Elapsed().Nanoseconds(),
+		Splits:     splitStates,
+		Fullscreen: m.altscreen,
 	}
 	if state.Running {
 		state.StartedAt = time.Now()
@@ -391,7 +400,7 @@ func main() {
 		stopwatch:    sw,
 		splitInputs:  splitInputs,
 		focusedInput: -1,
-		altscreen:    true,
+		altscreen:    state == nil || state.Fullscreen,
 		keymap: keymap{
 			start: key.NewBinding(
 				key.WithKeys("s"),
@@ -427,7 +436,7 @@ func main() {
 			),
 			navDown: key.NewBinding(
 				key.WithKeys("down"),
-				key.WithHelp("↓", "navigate"),
+				// key.WithHelp("↓", "navigate"),
 			),
 			unfocus: key.NewBinding(
 				key.WithKeys("esc"),
