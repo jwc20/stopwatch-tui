@@ -170,7 +170,7 @@ func (m model) helpView() string {
 	if m.inputFocused() {
 		bindings = []key.Binding{
 			m.keymap.navUp,
-			m.keymap.navDown,
+			// m.keymap.navDown,
 			m.keymap.deleteSplit,
 			m.keymap.unfocus,
 			m.keymap.quit,
