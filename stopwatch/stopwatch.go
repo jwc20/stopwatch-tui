@@ -23,6 +23,24 @@ func WithInterval(interval time.Duration) Option {
 	}
 }
 
+func WithElapsed(d time.Duration) Option {
+	return func(m *Model) {
+		m.d = d
+	}
+}
+
+func WithSplits(splits []time.Duration) Option {
+	return func(m *Model) {
+		m.splits = splits
+	}
+}
+
+func WithRunning(running bool) Option {
+	return func(m *Model) {
+		m.running = running
+	}
+}
+
 type TickMsg struct {
 	ID  int
 	tag int
@@ -66,6 +84,9 @@ func (m Model) ID() int {
 }
 
 func (m Model) Init() tea.Cmd {
+	if m.running {
+		return tick(m.id, m.tag, m.Interval)
+	}
 	return m.Start()
 }
 
@@ -145,7 +166,7 @@ func (m Model) Splits() []time.Duration {
 }
 
 func (m Model) View() string {
-	return m.d.String()
+	return formatDuration(m.d)
 }
 
 func (m Model) SplitsView() string {
