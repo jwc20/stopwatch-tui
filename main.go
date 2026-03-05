@@ -20,16 +20,20 @@ type model struct {
 	keymap    keymap
 	help      help.Model
 	quitting  bool
+	altscreen bool
 	width     int
 	height    int
+	statusMsg string
 }
 
 type keymap struct {
-	start key.Binding
-	split key.Binding
-	stop  key.Binding
-	reset key.Binding
-	quit  key.Binding
+	start      key.Binding
+	split      key.Binding
+	stop       key.Binding
+	reset      key.Binding
+	fullscreen key.Binding
+	export     key.Binding
+	quit       key.Binding
 }
 
 func (m model) Init() tea.Cmd {
@@ -43,12 +47,20 @@ func (m model) View() tea.View {
 		content += splits + "\n"
 	}
 
+	if m.statusMsg != "" {
+		content += m.statusMsg + "\n"
+	}
+
 	if !m.quitting {
 		content += m.helpView()
 	}
 
-	v := tea.NewView(m.center(content))
-	v.AltScreen = true
+	if m.altscreen {
+		content = m.center(content)
+	}
+
+	v := tea.NewView(content)
+	v.AltScreen = m.altscreen
 	return v
 }
 
@@ -91,6 +103,8 @@ func (m model) helpView() string {
 		m.keymap.stop,
 		m.keymap.split,
 		m.keymap.reset,
+		m.keymap.export,
+		m.keymap.fullscreen,
 		m.keymap.quit,
 	})
 }
@@ -127,6 +141,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		switch {
+		case key.Matches(msg, m.keymap.export):
+			filename, err := exportICS(m.stopwatch.Splits())
+			if err != nil {
+				m.statusMsg = "export failed: " + err.Error()
+			} else {
+				m.statusMsg = "exported: " + filename
+			}
+			return m, nil
+		case key.Matches(msg, m.keymap.fullscreen):
+			m.altscreen = !m.altscreen
+			return m, nil
 		case key.Matches(msg, m.keymap.quit):
 			m.quitting = true
 			return m, tea.Sequence(saveCmd(m.currentAppState()), tea.Quit)
@@ -190,6 +215,7 @@ func main() {
 
 	m := model{
 		stopwatch: stopwatch.New(opts...),
+		altscreen: true,
 		keymap: keymap{
 			start: key.NewBinding(
 				key.WithKeys("s"),
@@ -206,6 +232,14 @@ func main() {
 			reset: key.NewBinding(
 				key.WithKeys("r"),
 				key.WithHelp("r", "reset"),
+			),
+			fullscreen: key.NewBinding(
+				key.WithKeys("f"),
+				key.WithHelp("f", "fullscreen"),
+			),
+			export: key.NewBinding(
+				key.WithKeys("e"),
+				key.WithHelp("e", "export .ics"),
 			),
 			quit: key.NewBinding(
 				key.WithKeys("ctrl+c", "q"),
