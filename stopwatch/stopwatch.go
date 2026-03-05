@@ -1,7 +1,8 @@
-// Package stopwatch provides a simple stopwatch component.
 package stopwatch
 
 import (
+	"fmt"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -14,91 +15,78 @@ func nextID() int {
 	return int(atomic.AddInt64(&lastID, 1))
 }
 
-// Option is a configuration option in [New]. For example:
-//
-//	timer := New(time.Second*10, WithInterval(5*time.Second))
 type Option func(*Model)
 
-// WithInterval is an option for setting the interval between ticks. Pass as
-// an argument to [New].
 func WithInterval(interval time.Duration) Option {
 	return func(m *Model) {
 		m.Interval = interval
 	}
 }
 
-// TickMsg is a message that is sent on every timer tick.
 type TickMsg struct {
-	// ID is the identifier of the stopwatch that sends the message. This makes
-	// it possible to determine which stopwatch a tick belongs to when there
-	// are multiple stopwatches running.
-	//
-	// Note, however, that a stopwatch will reject ticks from other
-	// stopwatches, so it's safe to flow all TickMsgs through all stopwatches
-	// and have them still behave appropriately.
 	ID  int
 	tag int
 }
 
-// StartStopMsg is sent when the stopwatch should start or stop.
 type StartStopMsg struct {
 	ID      int
 	running bool
 }
 
-// ResetMsg is sent when the stopwatch should reset.
 type ResetMsg struct {
 	ID int
 }
 
-// Model for the stopwatch component.
+type SplitMsg struct {
+	ID int
+}
+
 type Model struct {
 	d       time.Duration
 	id      int
 	tag     int
 	running bool
+	splits  []time.Duration
 
-	// How long to wait before every tick. Defaults to 1 second.
 	Interval time.Duration
 }
 
-// New creates a new stopwatch with 1s interval.
 func New(opts ...Option) Model {
 	m := Model{
 		id: nextID(),
 	}
-
 	for _, opt := range opts {
 		opt(&m)
 	}
 	return m
 }
 
-// ID returns the unique ID of the model.
 func (m Model) ID() int {
 	return m.id
 }
 
-// Init starts the stopwatch.
 func (m Model) Init() tea.Cmd {
 	return m.Start()
 }
 
-// Start starts the stopwatch.
 func (m Model) Start() tea.Cmd {
 	return tea.Sequence(func() tea.Msg {
 		return StartStopMsg{ID: m.id, running: true}
 	}, tick(m.id, m.tag, m.Interval))
 }
 
-// Stop stops the stopwatch.
 func (m Model) Stop() tea.Cmd {
 	return func() tea.Msg {
 		return StartStopMsg{ID: m.id, running: false}
 	}
 }
 
-// Toggle stops the stopwatch if it is running and starts it if it is stopped.
+func (m Model) Split() tea.Cmd {
+	return func() tea.Msg {
+		return SplitMsg{ID: m.id}
+	}
+}
+
 func (m Model) Toggle() tea.Cmd {
 	if m.Running() {
 		return m.Stop()
@@ -106,19 +94,16 @@ func (m Model) Toggle() tea.Cmd {
 	return m.Start()
 }
 
-// Reset resets the stopwatch to 0.
 func (m Model) Reset() tea.Cmd {
 	return func() tea.Msg {
 		return ResetMsg{ID: m.id}
 	}
 }
 
-// Running returns true if the stopwatch is running or false if it is stopped.
 func (m Model) Running() bool {
 	return m.running
 }
 
-// Update handles the timer tick.
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case StartStopMsg:
@@ -131,34 +116,68 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, nil
 		}
 		m.d = 0
+		m.splits = nil
+	case SplitMsg:
+		if msg.ID != m.id {
+			return m, nil
+		}
+		m.splits = append(m.splits, m.d)
 	case TickMsg:
 		if !m.running || msg.ID != m.id {
 			break
 		}
-
-		// If a tag is set, and it's not the one we expect, reject the message.
-		// This prevents the stopwatch from receiving too many messages and
-		// thus ticking too fast.
 		if msg.tag > 0 && msg.tag != m.tag {
 			return m, nil
 		}
-
 		m.d += m.Interval
 		m.tag++
 		return m, tick(m.id, m.tag, m.Interval)
 	}
-
 	return m, nil
 }
 
-// Elapsed returns the time elapsed.
 func (m Model) Elapsed() time.Duration {
 	return m.d
 }
 
-// View of the timer component.
+func (m Model) Splits() []time.Duration {
+	return m.splits
+}
+
 func (m Model) View() string {
 	return m.d.String()
+}
+
+func (m Model) SplitsView() string {
+	if len(m.splits) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	for i, s := range m.splits {
+		var lap time.Duration
+		if i == 0 {
+			lap = s
+		} else {
+			lap = s - m.splits[i-1]
+		}
+		sb.WriteString(fmt.Sprintf("%2d.  %s  (+%s)\n", i+1, formatDuration(s), formatDuration(lap)))
+	}
+	return sb.String()
+}
+
+func formatDuration(d time.Duration) string {
+	ms := d.Milliseconds()
+	h := ms / 3_600_000
+	ms -= h * 3_600_000
+	min := ms / 60_000
+	ms -= min * 60_000
+	sec := ms / 1_000
+	ms -= sec * 1_000
+
+	if h > 0 {
+		return fmt.Sprintf("%02d:%02d:%02d.%03d", h, min, sec, ms)
+	}
+	return fmt.Sprintf("%02d:%02d.%03d", min, sec, ms)
 }
 
 func tick(id int, tag int, d time.Duration) tea.Cmd {

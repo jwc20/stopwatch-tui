@@ -31,14 +31,16 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) View() tea.View {
-	// Note: you could further customize the time output by getting the
-	// duration from m.stopwatch.Elapsed(), which returns a time.Duration, and
-	// skip m.stopwatch.View() altogether.
-	s := m.stopwatch.View() + "\n"
+	s := "Elapsed: " + m.stopwatch.View() + "\n\n"
+
+	if splits := m.stopwatch.SplitsView(); splits != "" {
+		s += splits + "\n"
+	}
+
 	if !m.quitting {
-		s = "Elapsed: " + s
 		s += m.helpView()
 	}
+
 	v := tea.NewView(s)
 	v.AltScreen = true
 	return v
@@ -48,6 +50,7 @@ func (m model) helpView() string {
 	return "\n" + m.help.ShortHelpView([]key.Binding{
 		m.keymap.start,
 		m.keymap.stop,
+		m.keymap.split,
 		m.keymap.reset,
 		m.keymap.quit,
 	})
@@ -63,8 +66,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keymap.reset):
 			return m, m.stopwatch.Reset()
 		case key.Matches(msg, m.keymap.split):
-			// return m, m.stopwatch.Split()
-			return m, nil
+			return m, m.stopwatch.Split()
 		case key.Matches(msg, m.keymap.start, m.keymap.stop):
 			m.keymap.stop.SetEnabled(!m.stopwatch.Running())
 			m.keymap.start.SetEnabled(m.stopwatch.Running())
