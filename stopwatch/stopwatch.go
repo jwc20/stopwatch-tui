@@ -98,7 +98,7 @@ func (m Model) Init() tea.Cmd {
 	if m.running {
 		return tick(m.id, m.tag, m.Interval)
 	}
-	return m.Start()
+	return nil
 }
 
 func (m Model) Start() tea.Cmd {

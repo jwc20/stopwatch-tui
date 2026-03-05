@@ -170,7 +170,7 @@ func (m model) helpView() string {
 	if m.inputFocused() {
 		bindings = []key.Binding{
 			m.keymap.navUp,
-			// m.keymap.navDown,
+			m.keymap.navDown,
 			m.keymap.deleteSplit,
 			m.keymap.unfocus,
 			m.keymap.quit,
@@ -318,16 +318,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keymap.reset):
 			m.splitInputs = nil
 			m.focusedInput = -1
-			cmd := m.stopwatch.Reset()
-			DeleteState()
-			return m, cmd
+			return m, m.stopwatch.Reset()
+
 		case key.Matches(msg, m.keymap.split):
 			return m, m.stopwatch.Split()
+
 		case key.Matches(msg, m.keymap.start, m.keymap.stop):
-			m.keymap.stop.SetEnabled(!m.stopwatch.Running())
-			m.keymap.start.SetEnabled(m.stopwatch.Running())
-			swCmd := m.stopwatch.Toggle()
-			return m, tea.Batch(swCmd, saveCmd(m.currentAppState()))
+			return m, m.stopwatch.Toggle()
 		}
 
 	case tea.WindowSizeMsg:
@@ -354,13 +351,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case stopwatch.StartStopMsg:
 		var cmd tea.Cmd
 		m.stopwatch, cmd = m.stopwatch.Update(msg)
-		m.keymap.reset.SetEnabled(!m.stopwatch.Running())
+		running := m.stopwatch.Running()
+		m.keymap.start.SetEnabled(!running)
+		m.keymap.stop.SetEnabled(running)
+		m.keymap.reset.SetEnabled(!running)
+		m.keymap.split.SetEnabled(running)
 		return m, tea.Batch(cmd, saveCmd(m.currentAppState()))
 
 	case stopwatch.ResetMsg:
 		var cmd tea.Cmd
 		m.stopwatch, cmd = m.stopwatch.Update(msg)
+		m.keymap.start.SetEnabled(true)
+		m.keymap.stop.SetEnabled(false)
 		m.keymap.reset.SetEnabled(true)
+		DeleteState()
 		return m, cmd
 	}
 
@@ -436,7 +440,7 @@ func main() {
 			),
 			navDown: key.NewBinding(
 				key.WithKeys("down"),
-				// key.WithHelp("↓", "navigate"),
+				key.WithHelp("↓", "navigate"),
 			),
 			unfocus: key.NewBinding(
 				key.WithKeys("esc"),
@@ -455,11 +459,15 @@ func main() {
 	}
 
 	if state == nil || !state.Running {
-		m.keymap.start.SetEnabled(false)
-		m.keymap.reset.SetEnabled(true)
-	} else {
+		m.keymap.start.SetEnabled(true)
 		m.keymap.stop.SetEnabled(false)
+		m.keymap.reset.SetEnabled(true)
+		m.keymap.split.SetEnabled(false)
+	} else {
+		m.keymap.start.SetEnabled(false)
+		m.keymap.stop.SetEnabled(true)
 		m.keymap.reset.SetEnabled(false)
+		m.keymap.split.SetEnabled(true)
 	}
 
 	sigs := make(chan os.Signal, 1)
