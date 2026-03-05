@@ -2,6 +2,10 @@
 
 A terminal stopwatch with split tracking, persistent state, and calendar export. Built with [Bubble Tea](https://charm.land/bubbletea/v2).
 
+
+https://github.com/user-attachments/assets/db62626a-e81c-4e27-adac-b18d928aebc6
+
+
 ## Features
 
 - Millisecond-precision stopwatch
