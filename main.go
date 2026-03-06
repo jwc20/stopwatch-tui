@@ -8,6 +8,8 @@ import (
 	"syscall"
 	"time"
 
+	"database/sql"
+
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textinput"
@@ -17,6 +19,9 @@ import (
 )
 
 type model struct {
+	db           *sql.DB
+	session      *Session
+	splitIDs     []int64
 	stopwatch    stopwatch.Model
 	keymap       keymap
 	help         help.Model
@@ -136,27 +141,22 @@ func (m model) center(content string) string {
 	if m.width == 0 || m.height == 0 {
 		return content
 	}
-
 	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
-
 	maxWidth := 0
 	for _, line := range lines {
 		if w := lipgloss.Width(line); w > maxWidth {
 			maxWidth = w
 		}
 	}
-
 	leftPad := (m.width - maxWidth) / 2
 	if leftPad < 0 {
 		leftPad = 0
 	}
 	prefix := strings.Repeat(" ", leftPad)
-
 	topPad := (m.height - len(lines)) / 2
 	if topPad < 0 {
 		topPad = 0
 	}
-
 	var sb strings.Builder
 	sb.WriteString(strings.Repeat("\n", topPad))
 	for _, line := range lines {
@@ -190,40 +190,6 @@ func (m model) helpView() string {
 	return "\n" + m.help.ShortHelpView(bindings)
 }
 
-func (m model) currentAppState() AppState {
-	entries := m.stopwatch.Splits()
-	splitStates := make([]SplitState, len(entries))
-	for i, e := range entries {
-		name := ""
-		if i < len(m.splitInputs) {
-			name = m.splitInputs[i].Value()
-		}
-		splitStates[i] = SplitState{
-			ElapsedNs:  e.Elapsed.Nanoseconds(),
-			RecordedAt: e.RecordedAt,
-			Name:       name,
-		}
-	}
-
-	state := AppState{
-		Running:    m.stopwatch.Running(),
-		ElapsedNs:  m.stopwatch.Elapsed().Nanoseconds(),
-		Splits:     splitStates,
-		Fullscreen: m.altscreen,
-	}
-	if state.Running {
-		state.StartedAt = time.Now()
-	}
-	return state
-}
-
-func saveCmd(state AppState) tea.Cmd {
-	return func() tea.Msg {
-		SaveState(state)
-		return nil
-	}
-}
-
 func (m *model) setFocus(index int) tea.Cmd {
 	if m.inputFocused() {
 		m.splitInputs[m.focusedInput].Blur()
@@ -252,10 +218,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.inputFocused() {
 			switch {
 			case key.Matches(msg, m.keymap.unfocus):
-				cmd := m.setFocus(-1)
-				return m, cmd
+				if m.session != nil && m.focusedInput < len(m.splitIDs) {
+					updateSplitName(m.db, m.splitIDs[m.focusedInput], m.splitInputs[m.focusedInput].Value())
+				}
+				return m, m.setFocus(-1)
+
 			case key.Matches(msg, m.keymap.deleteSplit):
 				i := m.focusedInput
+				splits := m.stopwatch.Splits()
+
+				if m.session != nil && i < len(m.splitIDs) {
+					if i > 0 {
+						mergeSplitUp(m.db, m.splitIDs[i-1], splits[i].Elapsed.Milliseconds(), splits[i].RecordedAt)
+					}
+					softDeleteSplit(m.db, m.splitIDs[i])
+					m.splitIDs = append(m.splitIDs[:i], m.splitIDs[i+1:]...)
+				}
+
 				cmd := m.stopwatch.DeleteSplit(i)
 				m.splitInputs = append(m.splitInputs[:i], m.splitInputs[i+1:]...)
 				if i >= len(m.splitInputs) {
@@ -263,22 +242,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.focusedInput = -1
 				if i >= 0 {
-					focusCmd := m.setFocus(i)
-					return m, tea.Batch(cmd, focusCmd)
+					return m, tea.Batch(cmd, m.setFocus(i))
 				}
 				return m, cmd
+
 			case key.Matches(msg, m.keymap.navUp):
 				if m.focusedInput > 0 {
-					cmd := m.setFocus(m.focusedInput - 1)
-					return m, cmd
+					return m, m.setFocus(m.focusedInput - 1)
 				}
 				return m, nil
+
 			case key.Matches(msg, m.keymap.navDown):
 				if m.focusedInput < len(m.splitInputs)-1 {
-					cmd := m.setFocus(m.focusedInput + 1)
-					return m, cmd
+					return m, m.setFocus(m.focusedInput + 1)
 				}
 				return m, nil
+
 			default:
 				var cmd tea.Cmd
 				m.splitInputs[m.focusedInput], cmd = m.splitInputs[m.focusedInput].Update(msg)
@@ -289,10 +268,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case key.Matches(msg, m.keymap.navDown):
 			if len(m.splitInputs) > 0 {
-				cmd := m.setFocus(0)
-				return m, cmd
+				return m, m.setFocus(0)
 			}
 			return m, nil
+
 		case key.Matches(msg, m.keymap.export):
 			filename, err := exportICS(m.stopwatch.Splits(), m.splitNames())
 			if err != nil {
@@ -301,6 +280,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.statusMsg = "exported: " + filename
 			}
 			return m, nil
+
 		case key.Matches(msg, m.keymap.exportJSON):
 			filename, err := exportGWSCommands(m.stopwatch.Splits(), m.splitNames())
 			if err != nil {
@@ -309,12 +289,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.statusMsg = "exported: " + filename
 			}
 			return m, nil
+
 		case key.Matches(msg, m.keymap.fullscreen):
 			m.altscreen = !m.altscreen
+			if m.session != nil {
+				updateSessionFullscreen(m.db, m.session.ID, m.altscreen)
+			}
 			return m, nil
+
 		case key.Matches(msg, m.keymap.quit):
+			if m.session != nil {
+				saveAllSplitNames(m.db, m.splitIDs, m.splitNames())
+			}
 			m.quitting = true
-			return m, tea.Sequence(saveCmd(m.currentAppState()), tea.Quit)
+			return m, tea.Quit
+
 		case key.Matches(msg, m.keymap.reset):
 			m.splitInputs = nil
 			m.focusedInput = -1
@@ -332,39 +321,91 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		return m, nil
 
-	case stopwatch.DeleteSplitMsg:
-		var cmd tea.Cmd
-		m.stopwatch, cmd = m.stopwatch.Update(msg)
-		return m, tea.Batch(cmd, saveCmd(m.currentAppState()))
-
-	case stopwatch.SplitMsg:
-		var cmd tea.Cmd
-		m.stopwatch, cmd = m.stopwatch.Update(msg)
-		m.splitInputs = append(m.splitInputs, newSplitInput(len(m.splitInputs)))
-		return m, tea.Batch(cmd, saveCmd(m.currentAppState()))
-
-	case stopwatch.TickMsg:
-		var cmd tea.Cmd
-		m.stopwatch, cmd = m.stopwatch.Update(msg)
-		return m, tea.Batch(cmd, saveCmd(m.currentAppState()))
-
 	case stopwatch.StartStopMsg:
 		var cmd tea.Cmd
 		m.stopwatch, cmd = m.stopwatch.Update(msg)
 		running := m.stopwatch.Running()
+
 		m.keymap.start.SetEnabled(!running)
 		m.keymap.stop.SetEnabled(running)
 		m.keymap.reset.SetEnabled(!running)
 		m.keymap.split.SetEnabled(running)
-		return m, tea.Batch(cmd, saveCmd(m.currentAppState()))
+
+		if running {
+			if m.session == nil {
+				session, err := createSession(m.db, m.altscreen)
+				if err != nil {
+					m.statusMsg = "db error: " + err.Error()
+				} else {
+					m.session = session
+				}
+			} else if m.session.LastPausedAt != nil {
+				if err := resumeSession(m.db, m.session.ID, *m.session.LastPausedAt); err != nil {
+					m.statusMsg = "db error: " + err.Error()
+				}
+				m.session.TotalPausedDurationMs += time.Since(*m.session.LastPausedAt).Milliseconds()
+				m.session.LastPausedAt = nil
+			}
+		} else {
+			if m.session != nil {
+				if err := pauseSession(m.db, m.session.ID); err != nil {
+					m.statusMsg = "db error: " + err.Error()
+				}
+				now := time.Now()
+				m.session.LastPausedAt = &now
+			}
+		}
+		return m, cmd
 
 	case stopwatch.ResetMsg:
 		var cmd tea.Cmd
 		m.stopwatch, cmd = m.stopwatch.Update(msg)
+
+		if m.session != nil {
+			if err := softDeleteSession(m.db, m.session.ID); err != nil {
+				m.statusMsg = "db error: " + err.Error()
+			}
+		}
+		m.session = nil
+		m.splitIDs = nil
+
 		m.keymap.start.SetEnabled(true)
 		m.keymap.stop.SetEnabled(false)
 		m.keymap.reset.SetEnabled(true)
-		DeleteState()
+		m.keymap.split.SetEnabled(false)
+		return m, cmd
+
+	case stopwatch.SplitMsg:
+		var cmd tea.Cmd
+		m.stopwatch, cmd = m.stopwatch.Update(msg)
+
+		if m.session != nil {
+			splits := m.stopwatch.Splits()
+			newest := splits[len(splits)-1]
+			row, err := insertSplit(
+				m.db, m.session.ID,
+				newest.Elapsed.Milliseconds(),
+				len(splits),
+				"",
+				newest.RecordedAt,
+			)
+			if err != nil {
+				m.statusMsg = "db error: " + err.Error()
+			} else {
+				m.splitIDs = append(m.splitIDs, row.ID)
+			}
+		}
+		m.splitInputs = append(m.splitInputs, newSplitInput(len(m.splitInputs)))
+		return m, cmd
+
+	case stopwatch.DeleteSplitMsg:
+		var cmd tea.Cmd
+		m.stopwatch, cmd = m.stopwatch.Update(msg)
+		return m, cmd
+
+	case stopwatch.TickMsg:
+		var cmd tea.Cmd
+		m.stopwatch, cmd = m.stopwatch.Update(msg)
 		return m, cmd
 	}
 
@@ -374,37 +415,66 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func main() {
+	db, err := openDB()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "failed to open database:", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	session, err := getActiveSession(db)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "warning: could not load session:", err)
+	}
+
 	opts := []stopwatch.Option{
 		stopwatch.WithInterval(time.Millisecond),
 	}
 
-	state, err := LoadState()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "warning: could not load state: %v\n", err)
-	}
-	if state != nil {
+	var splitIDs []int64
+	var splitInputs []textinput.Model
+	isFullscreen := true
+
+	if session != nil {
 		opts = append(opts,
-			stopwatch.WithElapsed(state.ElapsedDuration()),
-			stopwatch.WithSplits(state.SplitEntries()),
-			stopwatch.WithRunning(state.Running),
+			stopwatch.WithElapsed(session.ElapsedDuration()),
+			stopwatch.WithRunning(session.IsRunning()),
 		)
+		isFullscreen = session.IsFullscreen
+
+		splitRows, err := getSplits(db, session.ID)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "warning: could not load splits:", err)
+		}
+
+		var entries []stopwatch.SplitEntry
+		for _, row := range splitRows {
+			splitIDs = append(splitIDs, row.ID)
+			entries = append(entries, stopwatch.SplitEntry{
+				Elapsed:    time.Duration(row.SplitTimeMs) * time.Millisecond,
+				RecordedAt: row.CreatedAt,
+			})
+			ti := newSplitInput(len(splitInputs))
+			if row.Name != "" {
+				ti.SetValue(row.Name)
+			}
+			splitInputs = append(splitInputs, ti)
+		}
+		if len(entries) > 0 {
+			opts = append(opts, stopwatch.WithSplits(entries))
+		}
 	}
 
 	sw := stopwatch.New(opts...)
 
-	splitInputs := make([]textinput.Model, len(sw.Splits()))
-	for i := range splitInputs {
-		splitInputs[i] = newSplitInput(i)
-		if state != nil && i < len(state.Splits) && state.Splits[i].Name != "" {
-			splitInputs[i].SetValue(state.Splits[i].Name)
-		}
-	}
-
 	m := model{
+		db:           db,
+		session:      session,
+		splitIDs:     splitIDs,
 		stopwatch:    sw,
 		splitInputs:  splitInputs,
 		focusedInput: -1,
-		altscreen:    state == nil || state.Fullscreen,
+		altscreen:    isFullscreen,
 		keymap: keymap{
 			start: key.NewBinding(
 				key.WithKeys("s"),
@@ -458,23 +528,17 @@ func main() {
 		help: help.New(),
 	}
 
-	if state == nil || !state.Running {
-		m.keymap.start.SetEnabled(true)
-		m.keymap.stop.SetEnabled(false)
-		m.keymap.reset.SetEnabled(true)
-		m.keymap.split.SetEnabled(false)
-	} else {
-		m.keymap.start.SetEnabled(false)
-		m.keymap.stop.SetEnabled(true)
-		m.keymap.reset.SetEnabled(false)
-		m.keymap.split.SetEnabled(true)
-	}
+	running := session != nil && session.IsRunning()
+	m.keymap.start.SetEnabled(!running)
+	m.keymap.stop.SetEnabled(running)
+	m.keymap.reset.SetEnabled(!running)
+	m.keymap.split.SetEnabled(running)
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigs
-		SaveState(m.currentAppState())
+		db.Close()
 		os.Exit(0)
 	}()
 
