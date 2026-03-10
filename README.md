@@ -81,7 +81,13 @@ Exports splits as a standard iCalendar file (`splits_<timestamp>.ics`) using [go
 
 ### `gws` commands — press `g`
 
-You must set up credentials on Google Cloud and enable Google Calendar API to use this feature.
+**You must enable Google Calendar API and set up credentials on Google Cloud to use this feature.**
+
+![Enable Google Calendar API](https://github.com/user-attachments/assets/f54fadaf-dc5d-45ef-a2e9-80db48fcdc38)
+
+![Create OAuth Client](https://github.com/user-attachments/assets/0f905266-7479-461d-8f71-b125613cb588)
+
+
 
 Exports splits as a shell script (`splits_<timestamp>.sh`) containing one `gws calendar +insert` command per split, ready to run against Google Calendar via the [gws](https://github.com/googleworkspace/cli/) CLI.
 
