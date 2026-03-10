@@ -10,7 +10,7 @@ https://github.com/user-attachments/assets/db62626a-e81c-4e27-adac-b18d928aebc6
 
 - Millisecond-precision stopwatch
 - Split tracking with lap times and timestamps
-- **Persistent state** — the timer keeps running even after the app is closed. Reopening the app resumes from where it left off
+- *Store State with SQLITE DB* — the timer keeps running even after the app is closed. Reopening the app resumes from where it left off
 - Editable split names with inline text inputs
 - Delete splits (merges elapsed time into the previous split)
 - Fullscreen / inline display toggle
@@ -65,14 +65,6 @@ Each split row shows:
 
 When a split is deleted, its elapsed time is merged into the previous split so the total elapsed time is preserved.
 
-## Persistent state
-
-State is saved automatically to `~/.stopwatch-state.json` on every tick, split, and start/stop. If the app is closed while the timer is running, the elapsed time is reconstructed from the saved wall-clock start time when you reopen it.
-
-Quitting with `q` or `ctrl+c` saves state with the current running status. An OS-level signal (`SIGINT`, `SIGTERM`) also triggers a state save before exit. The only case where state is not saved is `SIGKILL`.
-
-Reset clears the state file entirely.
-
 ## Exports
 
 ### `.ics` — press `e`
@@ -116,7 +108,7 @@ Review the file before running: `cat splits_<timestamp>.sh`, then execute with `
 ```
 .
 ├── main.go          # TUI model, keybindings, view
-├── state.go         # Persistent state (load/save ~/.stopwatch-state.json)
+├── db.go            # Store state into db
 ├── ics.go           # iCalendar export
 ├── gws.go           # gws CLI command export
 └── stopwatch/
