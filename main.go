@@ -1,14 +1,13 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 	"time"
-
-	"database/sql"
 
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
@@ -66,7 +65,16 @@ func (m model) inputFocused() bool {
 }
 
 func (m model) View() tea.View {
-	content := "Elapsed: " + m.stopwatch.View() + "\n\n"
+	content := "Elapsed: " + m.stopwatch.View() + "\n"
+
+	if m.stopwatch.HasLap() {
+		// content += m.stopwatch.LapView() + "\n"
+		subtextStyle := lipgloss.NewStyle().Faint(true).Foreground(lipgloss.Color("241"))
+		lapText := m.stopwatch.LapView()
+		content += subtextStyle.Render(lapText + "\n")
+	}
+
+	content += "\n"
 
 	splits := m.stopwatch.Splits()
 	if len(splits) > 0 {

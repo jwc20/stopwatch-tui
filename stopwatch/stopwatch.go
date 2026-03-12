@@ -149,12 +149,14 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, nil
 		}
 		m.running = msg.running
+
 	case ResetMsg:
 		if msg.ID != m.id {
 			return m, nil
 		}
 		m.d = 0
 		m.splits = nil
+
 	case SplitMsg:
 		if msg.ID != m.id {
 			return m, nil
@@ -163,6 +165,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			Elapsed:    m.d,
 			RecordedAt: msg.RecordedAt,
 		})
+
 	case DeleteSplitMsg:
 		if msg.ID != m.id {
 			return m, nil
@@ -176,6 +179,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.splits[i-1].RecordedAt = m.splits[i].RecordedAt
 		}
 		m.splits = append(m.splits[:i], m.splits[i+1:]...)
+
 	case TickMsg:
 		if !m.running || msg.ID != m.id {
 			break
@@ -194,12 +198,27 @@ func (m Model) Elapsed() time.Duration {
 	return m.d
 }
 
+func (m Model) LapElapsed() time.Duration {
+	if len(m.splits) == 0 {
+		return 0
+	}
+	return m.d - m.splits[len(m.splits)-1].Elapsed
+}
+
+func (m Model) HasLap() bool {
+	return len(m.splits) > 0
+}
+
 func (m Model) Splits() []SplitEntry {
 	return m.splits
 }
 
 func (m Model) View() string {
 	return formatDuration(m.d)
+}
+
+func (m Model) LapView() string {
+	return formatDuration(m.LapElapsed())
 }
 
 func (m Model) SplitsView() string {
@@ -235,9 +254,11 @@ func formatDuration(d time.Duration) string {
 	ms -= sec * 1_000
 
 	if h > 0 {
-		return fmt.Sprintf("%02d:%02d:%02d.%03d", h, min, sec, ms)
+		// return fmt.Sprintf("%02d:%02d:%02d.%03d", h, min, sec, ms)
+		return fmt.Sprintf("%02d:%02d:%02d", h, min, sec)
 	}
-	return fmt.Sprintf("%02d:%02d.%03d", min, sec, ms)
+	// return fmt.Sprintf("%02d:%02d.%03d", min, sec, ms)
+	return fmt.Sprintf("%02d:%02d", min, sec)
 }
 
 func tick(id int, tag int, d time.Duration) tea.Cmd {
